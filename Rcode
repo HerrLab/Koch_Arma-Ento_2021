@@ -1,0 +1,385 @@
+setwd("~/Desktop/ArmEnt")
+library(edgeR)
+library(limma)
+library(RColorBrewer)
+library(mixOmics)
+library(HTSFilter)
+library(ggplot2)
+library(readxl)
+library(reshape2)
+library(plyr)
+library(Rmisc)
+library(ggplot2)
+library(ggrepel)
+library(EnhancedVolcano)
+
+####ENTOLOMA ANALYSIS--Differential expression analysis using edgeR. I followed the code outlined here: http://www.nathalievialaneix.eu/doc/html/solution_edgeR-tomato-withcode.html
+Ent_rawCountTable <- read.table("Entoloma.counts_clean.genes.q30.matrix.txt", header=TRUE, sep="\t", row.names=1)
+Ent_sampleinfo <- read.csv("Ent_design.csv", header=TRUE, row.names=1)
+head(Ent_rawCountTable)
+nrow(Ent_rawCountTable)
+
+Ent_dgeFull <- DGEList(Ent_rawCountTable, group=Ent_sampleinfo$condition)
+Ent_dgeFull
+
+Ent_pseudoCounts <- log2(Ent_dgeFull$counts+1)
+head(Ent_pseudoCounts)
+boxplot(Ent_pseudoCounts, col="gray", las=3)
+
+Ent_dgeFull <- DGEList(Ent_dgeFull$counts[apply(Ent_dgeFull$counts, 1, sum) != 0, ], group=Ent_dgeFull$samples$group)
+head(Ent_dgeFull$counts)
+
+Ent_dgeFull <- calcNormFactors(Ent_dgeFull, method="TMM")
+Ent_dgeFull
+Ent_dgeFull$samples
+head(Ent_dgeFull$counts)
+
+###This file outputed normalized gene expression values--in TMM units--for each gene at each sample.
+write.csv(Ent_dgeFull$counts, "Ent_clean_dgeFull_q30_new.csv")
+
+
+Ent_eff.lib.size <- Ent_dgeFull$samples$lib.size*Ent_dgeFull$samples$norm.factors
+Ent_normCounts <- cpm(Ent_dgeFull)
+write.csv(Ent_normCounts, "Ent_clean_cpm_q30.csv")
+Ent_pseudoNormCounts <- log2(Ent_normCounts + 1)
+boxplot(Ent_pseudoNormCounts, col="gray", las=3)
+plotMDS(Ent_pseudoNormCounts, pch = 1, cex = 2.5, xlim = c(-4, 4), ylim = c(-3, 3))
+
+Ent_dgeFull <- estimateCommonDisp(Ent_dgeFull)
+Ent_dgeFull <- estimateTagwiseDisp(Ent_dgeFull)
+
+Ent_dgeFull
+write.csv(Ent_dgeFull$counts, "Ent_clean_dgeFull_q30_new_norm.csv")
+
+Ent_dgeTest <- exactTest(Ent_dgeFull)
+Ent_dgeTest
+
+Ent_filtData <- HTSFilter(Ent_dgeFull)$filteredData
+Ent_dgeTestFilt <- exactTest(Ent_filtData)
+Ent_dgeTestFilt
+
+hist(Ent_dgeTest$table[,"PValue"], breaks=50)
+
+Ent_resNoFilt <-topTags(Ent_dgeTest, n=nrow(Ent_dgeTest$table))
+head(Ent_resNoFilt)
+
+Ent_resFilt <- topTags(Ent_dgeTestFilt, n=nrow(Ent_dgeTest$table))
+head(Ent_resFilt)
+sum(Ent_resNoFilt$table$FDR < 0.01)
+
+sum(Ent_resFilt$table$FDR < 0.01)
+
+Ent_sigDownReg <- Ent_resFilt$table[Ent_resFilt$table$FDR<0.01,]
+Ent_sigDownReg <- Ent_sigDownReg[order(Ent_sigDownReg$logFC),]
+head(Ent_sigDownReg)
+###Writing the file for the differential expression analysis. This file lists genes that are differentially expressed via FDR. Per this study, a gene also had to have a logFC greater than 2 to be considered differentially expressed.
+#### Negative logFC are those that are upregulated in the carpophoroid, whereas positive logFC are upregulated in the sporocarp.
+
+write.csv(Ent_sigDownReg, "Ent_clean_sigDownReg_q30.csv")
+
+Ent_sigUpReg_q30 <- Ent_sigDownReg[order(Ent_sigDownReg$logFC, decreasing=TRUE),]
+head(Ent_sigUpReg_q30)
+
+
+###Volcano plots... to make these plots I followed this: https://bioconductor.org/packages/release/bioc/vignettes/EnhancedVolcano/inst/doc/EnhancedVolcano.html
+keyvals <- ifelse(Ent_sigDownReg$logFC < -2, '#B83460', ifelse(Ent_sigDownReg$logFC > 2, '#F9766D', 'black'))
+keyvals[is.na(keyvals)] <- 'black'
+names(keyvals)[keyvals == '#F9766D'] <- 'sporocarp'
+names(keyvals)[keyvals == 'black'] <- 'NS'
+names(keyvals)[keyvals == '#B83460'] <- 'carpophoroid'
+EnhancedVolcano(Ent_sigDownReg, lab = rownames(Ent_sigDownReg), x = 'logFC', y = 'PValue', xlim = c(-16, 16), ylim = c(0, 350), FCcutoff = 2, colAlpha = 0.8, pointSize = 6, colCustom = keyvals, labSize = 0.0)
+
+####ARMILLARIA ANALYSIS--Differential expression analysis using edgeR. I followed the code outlined here: http://www.nathalievialaneix.eu/doc/html/solution_edgeR-tomato-withcode.html
+
+Arm_rawCountTable <- read.table("Armillaria.counts_clean.genes.q30.matrix.txt", header=TRUE, sep="\t", row.names=1)
+Arm_sampleinfo <- read.csv("Arm_design.csv", header=TRUE, row.names=1)
+head(Arm_rawCountTable)
+nrow(Arm_rawCountTable)
+
+Arm_dgeFull <- DGEList(Arm_rawCountTable, group=Arm_sampleinfo$condition)
+Arm_dgeFull
+
+Arm_pseudoCounts <- log2(Arm_dgeFull$counts+1)
+head(Arm_pseudoCounts)
+boxplot(Arm_pseudoCounts, col="gray", las=3)
+
+Arm_dgeFull <- DGEList(Arm_dgeFull$counts[apply(Arm_dgeFull$counts, 1, sum) != 0, ], group=Arm_dgeFull$samples$group)
+head(Arm_dgeFull$counts)
+
+Arm_dgeFull <- calcNormFactors(Arm_dgeFull, method="TMM")
+Arm_dgeFull
+Arm_dgeFull$samples
+head(Arm_dgeFull$counts)
+
+Arm_eff.lib.size <- Arm_dgeFull$samples$lib.size*Arm_dgeFull$samples$norm.factors
+Arm_normCounts <- cpm(Arm_dgeFull)
+Arm_pseudoNormCounts <- log2(Arm_normCounts + 1)
+boxplot(Arm_pseudoNormCounts, col="gray", las=3)
+plotMDS(Arm_pseudoNormCounts, pch = 1, cex = 2.5, xlim = c(-4, 4), ylim = c(-3, 3))
+
+Arm_dgeFull <- estimateCommonDisp(Arm_dgeFull)
+Arm_dgeFull <- estimateTagwiseDisp(Arm_dgeFull)
+
+Arm_dgeFull
+###This file outputed normalized gene expression values--in TMM units--for each gene at each sample.
+write.csv(Arm_dgeFull$counts, "Arm_clean_dgeFull_q30.csv")
+
+
+Arm_dgeTest <- exactTest(Arm_dgeFull)
+Arm_dgeTest
+
+Arm_filtData <- HTSFilter(Arm_dgeFull)$filteredData
+Arm_dgeTestFilt <- exactTest(Arm_filtData)
+Arm_dgeTestFilt
+
+hist(Arm_dgeTest$table[,"PValue"], breaks=50)
+
+Arm_resNoFilt <-topTags(Arm_dgeTest, n=nrow(Arm_dgeTest$table))
+head(Arm_resNoFilt)
+
+Arm_resFilt <- topTags(Arm_dgeTestFilt, n=nrow(Arm_dgeTest$table))
+head(Arm_resFilt)
+sum(Arm_resNoFilt$table$FDR < 0.01)
+
+sum(Arm_resFilt$table$FDR < 0.01)
+
+Arm_sigDownReg <- Arm_resFilt$table[Arm_resFilt$table$FDR<0.01,]
+Arm_sigDownReg <- Arm_sigDownReg[order(Arm_sigDownReg$logFC),]
+head(Arm_sigDownReg)
+
+###Writing the file for the differential expression analysis. This file lists genes that are differentially expressed via FDR. Per this study, a gene also had to have a logFC greater than 2 to be considered differentially expressed.
+#### Negative logFC are those that are upregulated in the carpophoroid, whereas positive logFC are upregulated in the sporocarp.
+
+write.csv(Arm_sigDownReg, "Arm_clean_sigDownReg_q30.csv")
+
+###Volcano plots... to make these plots I followed this: https://bioconductor.org/packages/release/bioc/vignettes/EnhancedVolcano/inst/doc/EnhancedVolcano.html
+keyvals <- ifelse(Arm_sigDownReg$logFC < -2, '#D3895E', ifelse(Arm_sigDownReg$logFC > 2, '#E3E75F', 'black'))
+keyvals[is.na(keyvals)] <- 'black'
+names(keyvals)[keyvals == '#E3E75F'] <- 'sporocarp'
+names(keyvals)[keyvals == 'black'] <- 'NS'
+names(keyvals)[keyvals == '#D3895E'] <- 'carpophoroid'
+EnhancedVolcano(Arm_sigDownReg, lab = rownames(Arm_sigDownReg), x = 'logFC', y = 'PValue', FCcutoff = 2, colAlpha = 0.8, pointSize = 6, colCustom = keyvals, labSize = 0.0, xlim = c(-16, 16), ylim = c(0, 350))
+
+###READ COUNTS
+readcounts <- read_excel("carpophoroid_readcounts_q30_clean.xlsx")
+p <- ggplot(readcounts, aes(x=species, y=reads)) +
+  geom_boxplot() +
+  theme_classic()
+p + geom_jitter(shape=1, size = 3, stroke = 1.1, position=position_jitter(0.2))
+
+##OXALATE DECARBOXYLASE
+OXD <- read_excel("OXD.xlsx")
+OXD_summary <- summarySE(OXD, measurevar="TMM", groupvars=c("Condition", "Gene"))
+OXD_summary2 <- OXD_summary
+OXD_summary2$Gene <- factor(OXD_summary2$Gene)
+p <- ggplot(data=OXD_summary2, aes(x=Gene, y=TMM, fill=Condition)) +
+  geom_bar(width = 0.4, stat="identity", position=position_dodge(0.5), color="black") +
+  geom_errorbar(aes(ymin=TMM-se, ymax=TMM+se), width=0.1, position=position_dodge(0.5)) +
+  theme_classic()
+p
+
+##RICIN
+RICIN <- read_excel("RICIN.xlsx")
+RICIN_summary <- summarySE(RICIN, measurevar="TMM", groupvars=c("Condition", "Gene"))
+RICIN_summary2 <- RICIN_summary
+RICIN_summary2$Gene <- factor(RICIN_summary2$Gene)
+p <- ggplot(data=RICIN_summary2, aes(x=Gene, y=TMM, fill=Condition)) +
+  geom_bar(width = 0.4, stat="identity", position=position_dodge(0.5), color="black") +
+  geom_errorbar(aes(ymin=TMM-se, ymax=TMM+se), width=0.1, position=position_dodge(0.5)) +
+  theme_classic()
+p
+
+##GALACTOMANNOPROTEIN
+CWG <- read_excel("CWG.xlsx")
+CWG_summary <- summarySE(CWG, measurevar="TMM", groupvars=c("Condition"))
+p <- ggplot(data=CWG_summary, aes(x=Condition, y=TMM)) +
+  geom_bar(width = 0.4, stat="identity", position=position_dodge(), color="black") +
+  geom_errorbar(aes(ymin=TMM-se, ymax=TMM+se), width=0.1, position=position_dodge(0.5)) +
+  theme_classic()
+p
+
+##ISOCITRATE LYASE
+ICL <- read_excel("ICL.xlsx")
+ICL_summary <- summarySE(ICL, measurevar="TMM", groupvars=c("Condition"))
+q <- ggplot(data=ICL_summary, aes(x=Condition, y=TMM)) +
+  geom_bar(width = 0.4, stat="identity", color="black", position=position_dodge()) +
+  geom_errorbar(aes(ymin=TMM-se, ymax=TMM+se), width=0.1, position=position_dodge(0.5)) +
+  theme_classic()
+q
+
+
+##Cazyme heatmap
+
+cazypal <- colorRampPalette(c("#FFFFFF", "#E3E75F", "#F7AC59", "#EC6A6D", "#B83460", "#8900D3", "#4D0076", "#36007E"))
+coul <- cazypal(256)
+cazy <- read.csv("Cazymes_reduced.csv", sep=",")
+cazy
+row.names(cazy) <- cazy$Organism
+cazy <- cazy[,2:69]
+cazy_matrix <- data.matrix(cazy)
+cazy_heatmap <- heatmap(cazy_matrix, Rowv=NA, Colv=NA, col = coul, scale="column", margins=c(5,10))
+coul
+scaled.dat <- scale(cazy_matrix) 
+write.csv(scaled.dat, "Cazy_scale.csv")
+
+##GO TERMS BARPLOT ENTOLOMA
+GO_Ent <- read_excel("Go_terms_plot_ENT.xlsx")
+
+Ent_Go <- ggplot(data=GO_Ent, aes(x=gene, y=gene_number, fill=condition)) +
+  geom_bar(stat="identity", color="black") +
+  scale_fill_manual(values=c('pink', 'blue', 'green')) +
+  ylim(0,150) +
+  theme_classic()
+Ent_Go
+
+##GO TERMS BARPLOT Armillaria
+GO_Arm <- read_excel("Go_terms_plot_ARM.xlsx")
+
+Arm_Go <- ggplot(data=GO_Arm, aes(x=gene, y=gene_number, fill=condition)) +
+  geom_bar(stat="identity", color="black") +
+  scale_fill_manual(values=c('white', 'blue', 'green')) +
+  ylim(0,150) +
+  theme_classic()
+Arm_Go
+
+####Bolete ANALYSIS--with sclerotium transcriptome for the mapping. Differential expression analysis using edgeR. I followed the code outlined here: http://www.nathalievialaneix.eu/doc/html/solution_edgeR-tomato-withcode.html
+Bol_rawCountTable <- read.table("Bolete_sclerotium.counts.genes.q30.matrix.txt", header=TRUE, sep="\t", row.names=1)
+Bol_sampleinfo <- read.csv("Bolete_sclerotium_design.csv", header=TRUE, row.names=1)
+head(Bol_rawCountTable)
+nrow(Bol_rawCountTable)
+
+Bol_dgeFull <- DGEList(Bol_rawCountTable, group=Bol_sampleinfo$condition)
+Bol_dgeFull
+
+Bol_pseudoCounts <- log2(Bol_dgeFull$counts+1)
+head(Bol_pseudoCounts)
+boxplot(Bol_pseudoCounts, col="gray", las=3)
+
+Bol_dgeFull <- DGEList(Bol_dgeFull$counts[apply(Bol_dgeFull$counts, 1, sum) != 0, ], group=Bol_dgeFull$samples$group)
+head(Bol_dgeFull$counts)
+
+Bol_dgeFull <- calcNormFactors(Bol_dgeFull, method="TMM")
+Bol_dgeFull
+Bol_dgeFull$samples
+head(Bol_dgeFull$counts)
+
+###This file outputed normalized gene expression values--in TMM units--for each gene at each sample.
+write.csv(Bol_dgeFull$counts, "Bol_onsclerotium_clean_dgeFull_q30_new.csv")
+
+
+Bol_eff.lib.size <- Bol_dgeFull$samples$lib.size*Bol_dgeFull$samples$norm.factors
+Bol_normCounts <- cpm(Bol_dgeFull)
+Bol_pseudoNormCounts <- log2(Bol_normCounts + 1)
+boxplot(Bol_pseudoNormCounts, col="gray", las=3)
+plotMDS(Bol_pseudoNormCounts, pch = 1, cex = 2.5, xlim = c(-4, 4), ylim = c(-3, 3))
+
+Bol_dgeFull <- estimateCommonDisp(Bol_dgeFull)
+Bol_dgeFull <- estimateTagwiseDisp(Bol_dgeFull)
+
+Bol_dgeFull
+write.csv(Bol_dgeFull$counts, "Bol_mappedonsclerotium_clean_dgeFull_q30_new_norm.csv")
+
+Bol_dgeTest <- exactTest(Bol_dgeFull)
+Bol_dgeTest
+
+Bol_filtData <- HTSFilter(Bol_dgeFull)$filteredData
+Bol_dgeTestFilt <- exactTest(Bol_filtData)
+Bol_dgeTestFilt
+
+hist(Bol_dgeTest$table[,"PValue"], breaks=50)
+
+Bol_resNoFilt <-topTags(Bol_dgeTest, n=nrow(Bol_dgeTest$table))
+head(Bol_resNoFilt)
+
+Bol_resFilt <- topTags(Bol_dgeTestFilt, n=nrow(Bol_dgeTest$table))
+head(Bol_resFilt)
+sum(Bol_resNoFilt$table$FDR < 0.01)
+
+sum(Bol_resFilt$table$FDR < 0.01)
+
+Bol_sigDownReg <- Bol_resFilt$table[Bol_resFilt$table$FDR<0.01,]
+Bol_sigDownReg <- Bol_sigDownReg[order(Bol_sigDownReg$logFC),]
+head(Bol_sigDownReg)
+###Writing the file for the differential expression analysis. This file lists genes that are differentially expressed via FDR. Per this study, a gene also had to have a logFC greater than 2 to be considered differentially expressed.
+#### Negative logFC are those that are upregulated in the carpophoroid, whereas positive logFC are upregulated in the sporocarp.
+
+write.csv(Bol_sigDownReg, "Bol_sclerotium_clean_sigDownReg_q30.csv")
+
+###Volcano plots... to make these plots I followed this: https://bioconductor.org/packages/release/bioc/vignettes/EnhancedVolcano/inst/doc/EnhancedVolcano.html
+keyvals <- ifelse(Bol_sigDownReg$logFC < -2, '#B83460', ifelse(Bol_sigDownReg$logFC > 2, '#F9766D', 'black'))
+keyvals[is.na(keyvals)] <- 'black'
+names(keyvals)[keyvals == '#F9766D'] <- 'sporocarp'
+names(keyvals)[keyvals == 'black'] <- 'NS'
+names(keyvals)[keyvals == '#B83460'] <- 'carpophoroid'
+EnhancedVolcano(Bol_sigDownReg, lab = rownames(Bol_sigDownReg), x = 'logFC', y = 'PValue', xlim = c(-16, 16), ylim = c(0, 350), FCcutoff = 2, colAlpha = 0.8, pointSize = 6, colCustom = keyvals)
+
+####Bolete ANALYSIS--with mushroom transcriptome for the mapping. Differential expression analysis using edgeR. I followed the code outlined here: http://www.nathalievialaneix.eu/doc/html/solution_edgeR-tomato-withcode.html
+Mush_rawCountTable <- read.table("Bolete_mushroom.counts.genes.q30.matrix.txt", header=TRUE, sep="\t", row.names=1)
+Mush_sampleinfo <- read.csv("Bolete_mushroom_design.csv", header=TRUE, row.names=1)
+head(Mush_rawCountTable)
+nrow(Mush_rawCountTable)
+
+Mush_dgeFull <- DGEList(Mush_rawCountTable, group=Mush_sampleinfo$condition)
+Mush_dgeFull
+
+Mush_pseudoCounts <- log2(Mush_dgeFull$counts+1)
+head(Mush_pseudoCounts)
+boxplot(Mush_pseudoCounts, col="gray", las=3)
+
+Mush_dgeFull <- DGEList(Mush_dgeFull$counts[apply(Mush_dgeFull$counts, 1, sum) != 0, ], group=Mush_dgeFull$samples$group)
+head(Mush_dgeFull$counts)
+
+Mush_dgeFull <- calcNormFactors(Mush_dgeFull, method="TMM")
+Mush_dgeFull
+Mush_dgeFull$samples
+head(Mush_dgeFull$counts)
+
+###This file outputed normalized gene expression values--in TMM units--for each gene at each sample.
+write.csv(Mush_dgeFull$counts, "Bol_onmushroom_clean_dgeFull_q30_new.csv")
+
+
+Mush_eff.lib.size <- Mush_dgeFull$samples$lib.size*Mush_dgeFull$samples$norm.factors
+Mush_normCounts <- cpm(Mush_dgeFull)
+Mush_pseudoNormCounts <- log2(Mush_normCounts + 1)
+boxplot(Mush_pseudoNormCounts, col="gray", las=3)
+plotMDS(Mush_pseudoNormCounts, pch = 1, cex = 2.5, xlim = c(-4, 4), ylim = c(-3, 3))
+
+Mush_dgeFull <- estimateCommonDisp(Mush_dgeFull)
+Mush_dgeFull <- estimateTagwiseDisp(Mush_dgeFull)
+
+Mush_dgeFull
+write.csv(Mush_dgeFull$counts, "Mush_mappedonmushroom_clean_dgeFull_q30_new_norm.csv")
+
+Mush_dgeTest <- exactTest(Mush_dgeFull)
+Mush_dgeTest
+
+Mush_filtData <- HTSFilter(Mush_dgeFull)$filteredData
+Mush_dgeTestFilt <- exactTest(Mush_filtData)
+Mush_dgeTestFilt
+
+hist(Mush_dgeTest$table[,"PValue"], breaks=50)
+
+Mush_resNoFilt <-topTags(Mush_dgeTest, n=nrow(Mush_dgeTest$table))
+head(Mush_resNoFilt)
+
+Mush_resFilt <- topTags(Mush_dgeTestFilt, n=nrow(Mush_dgeTest$table))
+head(Mush_resFilt)
+sum(Mush_resNoFilt$table$FDR < 0.01)
+
+sum(Mush_resFilt$table$FDR < 0.01)
+
+Mush_sigDownReg <- Mush_resFilt$table[Mush_resFilt$table$FDR<0.01,]
+Mush_sigDownReg <- Mush_sigDownReg[order(Mush_sigDownReg$logFC),]
+head(Mush_sigDownReg)
+###Writing the file for the differential expression analysis. This file lists genes that are differentially expressed via FDR. Per this study, a gene also had to have a logFC greater than 2 to be considered differentially expressed.
+#### Negative logFC are those that are upregulated in the carpophoroid, whereas positive logFC are upregulated in the sporocarp.
+
+write.csv(Mush_sigDownReg, "Bol_mushroommapping_clean_sigDownReg_q30.csv")
+
+###Volcano plots... to make these plots I followed this: https://bioconductor.org/packages/release/bioc/vignettes/EnhancedVolcano/inst/doc/EnhancedVolcano.html
+keyvals <- ifelse(Mush_sigDownReg$logFC < -2, '#B83460', ifelse(Mush_sigDownReg$logFC > 2, '#F9766D', 'black'))
+keyvals[is.na(keyvals)] <- 'black'
+names(keyvals)[keyvals == '#F9766D'] <- 'sporocarp'
+names(keyvals)[keyvals == 'black'] <- 'NS'
+names(keyvals)[keyvals == '#B83460'] <- 'carpophoroid'
+EnhancedVolcano(Mush_sigDownReg, lab = rownames(Mush_sigDownReg), x = 'logFC', y = 'PValue', xlim = c(-16, 16), ylim = c(0, 350), FCcutoff = 2, colAlpha = 0.8, pointSize = 6, colCustom = keyvals)
